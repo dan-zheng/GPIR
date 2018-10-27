@@ -152,6 +152,12 @@ extension InstructionKind : TextOutputStreamable {
             for (name, bb) in branches {
                 target.write(" case ?\(name) '\(bb.printedName)")
             }
+        case let .load(v):
+            target.write("load \(v)")
+        case let .store(v, p):
+            target.write("store \(v) to \(p)")
+        case let .copy(from: src, to: dest, count: count):
+            target.write("copy from \(src) to \(dest) count \(count)")
         case let .elementPointer(v, ii):
             target.write("elementPointer \(v) at \(ii.joinedDescription)")
         case .trap:

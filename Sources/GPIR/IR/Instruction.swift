@@ -57,25 +57,12 @@ public enum InstructionKind {
     case apply(Use, [Use])
 
     /** Memory **/
-    /*
-    /// Allocate host stack memory, returning a pointer
-    case allocateStack(Type, Int) /// => *T
-    case allocateHeap(Type, count: Use) /// => *T
-    /// Reference-counted box
-    case allocateBox(Type) /// => box{T}
-    case projectBox(Use) /// (box{T}) => *T
-    /// Retain/release a box via reference counter
-    case retain(Use)
-    case release(Use)
-    /// Dealloc any heap memory
-    case deallocate(Use)
     /// Load value from pointer on the host
     case load(Use)
     /// Store value to pointer on the host
     case store(Use, to: Use)
     /// Memory copy
     case copy(from: Use, to: Use, count: Use)
-    */
     /// GEP (without leading index)
     case elementPointer(Use, [ElementKey])
     /// Trap
@@ -173,11 +160,15 @@ public extension InstructionKind {
             }
             return dest.type
 
+        case let .load(v):
+            guard case let .pointer(t) = v.type.unaliased else { return .invalid }
+            return t
+
         case let .elementPointer(v, ii):
             guard case let .pointer(t) = v.type else { return .invalid }
             return t.elementType(at: ii).flatMap(Type.pointer) ?? .invalid
 
-        case .branch, .conditional, .return, .branchEnum, .trap:
+        case .branch, .conditional, .return, .branchEnum, .store, .copy, .trap:
             return .void
         }
     }
@@ -195,12 +186,16 @@ extension InstructionKind {
     public var operands: [Use] {
         switch self {
         case let .booleanBinary(_, op1, op2),
-             let .insert(op1, to: op2, at: _):
+             let .insert(op1, to: op2, at: _),
+             let .store(op1, op2):
             return [op1, op2]
         case
              let .return(op?), let .branchEnum(op, _), let .not(op),
-             let .extract(from: op, at: _), let .elementPointer(op, _):
+             let .extract(from: op, at: _), let .load(op),
+             let .elementPointer(op, _):
             return [op]
+        case let .copy(src, dest, count):
+            return [src, dest, count]
         case .builtin(_, let ops),
              .branch(_, let ops):
             return ops
@@ -269,6 +264,12 @@ extension InstructionKind : Equatable {
             return s1 == s2 && d1 == d2 && i1 == i2
         case let (.branchEnum(e1, b1), .branchEnum(e2, b2)):
             return e1 == e2 && b1 == b2
+        case let (.load(x1), .load(x2)):
+            return x1 == x2
+        case let (.store(x1, to: p1), .store(x2, to: p2)):
+            return x1 == x2 && p1 == p2
+        case let (.copy(from: f1, to: t1, count: c1), .copy(from: f2, to: t2, count: c2)):
+            return f1 == f2 && t1 == t2 && c1 == c2
         case let (.elementPointer(x1, ii1), .elementPointer(x2, ii2)):
             return x1 == x2 && ii1 == ii2
         case let (.branch(bb1, x1), .branch(bb2, x2)):
@@ -339,6 +340,26 @@ public extension InstructionKind {
         case .branchEnum(let use, let branches):
             let newUse = use == old ? new : use
             return .branchEnum(newUse, branches)
+        case .load(old):
+            return .load(new)
+        case .store(old, to: let dest):
+            return .store(new, to: dest)
+        case .store(let val, to: old):
+            return .store(val, to: new)
+        case .copy(from: old, to: old, count: old):
+            return .copy(from: new, to: new, count: new)
+        case .copy(from: old, to: old, count: let v3):
+            return .copy(from: new, to: new, count: v3)
+        case .copy(from: old, to: let v2, count: old):
+            return .copy(from: new, to: v2, count: new)
+        case .copy(from: old, to: let v2, count: let v3):
+            return .copy(from: new, to: v2, count: v3)
+        case .copy(from: let v1, to: old, count: old):
+            return .copy(from: v1, to: new, count: new)
+        case .copy(from: let v1, to: old, count: let v3):
+            return .copy(from: v1, to: new, count: v3)
+        case .copy(from: let v1, to: let v2, count: old):
+            return .copy(from: v1, to: v2, count: new)
         case .elementPointer(old, let indices):
             return .elementPointer(new, indices)
         default:
@@ -378,6 +399,9 @@ public enum Opcode : Equatable {
     case extract
     case insert
     case apply
+    case load
+    case store
+    case copy
     case elementPointer
     case trap
 }
@@ -399,6 +423,9 @@ public extension InstructionKind {
         case .extract: return .extract
         case .insert: return .insert
         case .apply: return .apply
+        case .load: return .load
+        case .store: return .store
+        case .copy: return .copy
         case .elementPointer: return .elementPointer
         case .trap: return .trap
         }

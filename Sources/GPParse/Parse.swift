@@ -652,29 +652,6 @@ extension Parser {
             }
             return .return(val)
 
-        /// 'extract' <num|key|val> (',' <num|key|val>)* 'from' <val>
-        case .extract:
-            let keys: [ElementKey] = try parseMany({
-                try parseElementKey(in: basicBlock).0
-            }, separatedBy: {
-                try consumeWrappablePunctuation(.comma)
-            })
-            try consume(.keyword(.from))
-            return .extract(from: try parseUse(in: basicBlock).0, at: keys)
-
-        /// 'insert' <val> 'to' <val> 'at' <num|key|val> (',' <num|key|val>)*
-        case .insert:
-            let (srcVal, _) = try parseUse(in: basicBlock)
-            try consume(.keyword(.to))
-            let (destVal, _) = try parseUse(in: basicBlock)
-            try consume(.keyword(.at))
-            let keys: [ElementKey] = try parseMany({
-                try parseElementKey(in: basicBlock).0
-            }, separatedBy: {
-                try consumeWrappablePunctuation(.comma)
-            })
-            return .insert(srcVal, to: destVal, at: keys)
-
         /// 'branchEnum' <val> ('case' <enum_case> <bb>)*
         case .branchEnum:
             let (enumCase, _) = try parseUse(in: basicBlock)
@@ -700,6 +677,40 @@ extension Parser {
                 return (caseName, bb)
             })
             return .branchEnum(enumCase, branches)
+
+        /// <boolean_binary_op> <val>, <val>
+        case let .booleanBinaryOp(op):
+            let (lhs, _) = try parseUse(in: basicBlock)
+            try consumeWrappablePunctuation(.comma)
+            let (rhs, _) = try parseUse(in: basicBlock)
+            return .booleanBinary(op, lhs, rhs)
+
+        /// 'not' <val>
+        case .not:
+            return try .not(parseUse(in: basicBlock).0)
+
+        /// 'extract' <num|key|val> (',' <num|key|val>)* 'from' <val>
+        case .extract:
+            let keys: [ElementKey] = try parseMany({
+                try parseElementKey(in: basicBlock).0
+            }, separatedBy: {
+                try consumeWrappablePunctuation(.comma)
+            })
+            try consume(.keyword(.from))
+            return .extract(from: try parseUse(in: basicBlock).0, at: keys)
+
+        /// 'insert' <val> 'to' <val> 'at' <num|key|val> (',' <num|key|val>)*
+        case .insert:
+            let (srcVal, _) = try parseUse(in: basicBlock)
+            try consume(.keyword(.to))
+            let (destVal, _) = try parseUse(in: basicBlock)
+            try consume(.keyword(.at))
+            let keys: [ElementKey] = try parseMany({
+                try parseElementKey(in: basicBlock).0
+            }, separatedBy: {
+                try consumeWrappablePunctuation(.comma)
+            })
+            return .insert(srcVal, to: destVal, at: keys)
 
         /// 'apply' <val> '(' <val>+ ')'
         case .apply:
@@ -743,6 +754,27 @@ extension Parser {
                 return .apply(fn.makeUse(), args)
             }
 
+        /// 'load' <val>
+        case .load:
+            return try .load(parseUse(in: basicBlock).0)
+
+        /// 'store' <val> 'to' <val>
+        case .store:
+            let (src, _) = try parseUse(in: basicBlock)
+            try consume(.keyword(.to))
+            let (dest, _) = try parseUse(in: basicBlock)
+            return .store(src, to: dest)
+
+        /// 'copy' 'from' <val> 'to' <val> 'count' <val>
+        case .copy:
+            try consume(.keyword(.from))
+            let (src, _) = try parseUse(in: basicBlock)
+            try consume(.keyword(.to))
+            let (dest, _) = try parseUse(in: basicBlock)
+            try consume(.keyword(.count))
+            let (count, _) = try parseUse(in: basicBlock)
+            return .copy(from: src, to: dest, count: count)
+
         /// 'elementPointer' <val> 'at' <num|key|val> (<num|key|val> ',')*
         case .elementPointer:
             let (base, _) = try parseUse(in: basicBlock)
@@ -757,17 +789,6 @@ extension Parser {
         /// 'trap'
         case .trap:
             return .trap
-
-        /// <boolean_binary_op> <val>, <val>
-        case let .booleanBinaryOp(op):
-            let (lhs, _) = try parseUse(in: basicBlock)
-            try consumeWrappablePunctuation(.comma)
-            let (rhs, _) = try parseUse(in: basicBlock)
-            return .booleanBinary(op, lhs, rhs)
-
-        /// 'not' <val>
-        case .not:
-            return try .not(parseUse(in: basicBlock).0)
         }
     }
 

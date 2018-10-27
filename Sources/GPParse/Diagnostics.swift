@@ -265,6 +265,9 @@ extension Opcode : CustomStringConvertible {
         case .insert: return "insert"
         case .branchEnum: return "branchEnum"
         case .apply: return "apply"
+        case .load: return "load"
+        case .store: return "store"
+        case .copy: return "copy"
         case .elementPointer: return "elementPointer"
         case .trap: return "trap"
         case let .booleanBinaryOp(op): return String(describing: op)
